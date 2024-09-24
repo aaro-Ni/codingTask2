@@ -19,7 +19,7 @@ type Tier = {
 
 type MetafieldValue = {
   title: string
-  discountType: 'PERCENTAGE' | 'FIXED_AMOUNT'
+  discountType: 'PERCENTAGE' | 'FIXED_AMOUNT' | "FIXED_BUNDLE"
   products: string[]
   collections: string[]
   tiers: Tier[]
@@ -84,7 +84,7 @@ function combineTargets(targets: Target[]): Target[] {
 }
 
 type Options = {
-  discountType: 'PERCENTAGE' | 'FIXED_AMOUNT'
+  discountType: 'PERCENTAGE' | 'FIXED_AMOUNT' | 'FIXED_BUNDLE'
   title: string
 }
 
@@ -96,9 +96,11 @@ type PercentageValue = {
 
 type FixedAmountValue = {
   fixedAmount: {
+    isBundle: boolean;
     amount: string;
   };
 };
+
 
 /**
  * Combines multiple discounts into a single discount by summing their values.
@@ -119,13 +121,19 @@ function combineDiscounts(discounts: ReturnType<typeof calculateBestDiscountComb
   // combine discounts
   const totalDiscountValue = discounts.reduce((final, discount) => {
     let discountedAmount = 0;
-    for (const target of discount.targets) {
-      if ((discount as any).value['percentage']) {
-        discountedAmount += target.cost.amountPerQuantity.amount * target.quantity * parseFloat((discount.value as PercentageValue).percentage.value) / 100
-      } else {
-        discountedAmount += parseFloat((discount.value as FixedAmountValue).fixedAmount.amount)
+    if ((discount as any).value['fixedBundle'] && (discount as any).value['fixedBundle'].isBundle){
+      discountedAmount = parseFloat((discount.value as FixedAmountValue).fixedAmount.amount) -final
+    }
+    else {
+      for (const target of discount.targets) {
+        if ((discount as any).value['percentage']) {
+          discountedAmount += target.cost.amountPerQuantity.amount * target.quantity * parseFloat((discount.value as PercentageValue).percentage.value) / 100
+        } else if ((discount as any).value['fixedAmount']) {
+          discountedAmount += parseFloat((discount.value as FixedAmountValue).fixedAmount.amount)
+        } 
       }
     }
+    
     return final + discountedAmount
   }, 0);
 
@@ -178,8 +186,9 @@ function calculateBestDiscountCombo(lineItems: CartItem[], tiers: Tier[], option
         percentage: {
           value: appliedTier.amount.toString()
         }
-      } : {
+      } :  {
         fixedAmount: {
+          isBundle: options.discountType === 'FIXED_BUNDLE',
           amount: appliedTier.amount.toString(),
         }
       },
